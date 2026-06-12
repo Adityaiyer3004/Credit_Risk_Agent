@@ -38,19 +38,23 @@ it in seconds.
 
 ## Architecture
 
-GET /api/analyze?company_number=XXXXXXXX
-│
-├── comp_house_ingestor.py   → live company profile
-├── gazette_scraper.py       → insolvency + charge records
-│
-▼
-risk_engine.py                   → credit score (1-100) + risk level
-│
-├── report_builder.py       → structured baseline report
-├── llm_reporter.py         → Groq Llama 3.1 AI report
-│
-▼
-orchestrator.py → FastAPI → Streamlit dashboard
+``
+Request: GET /api/analyze?company_number=XXXXXXXX
+
+[Companies House API]
+    ├── comp_house_ingestor.py   →  Company profile, officers, filings
+    └── gazette_scraper.py       →  Insolvency records, registered charges
+
+[Risk Engine]
+    └── risk_engine.py           →  Credit score (1–100) + risk classification
+
+[Report Generation]
+    ├── report_builder.py        →  Structured baseline report
+    └── llm_reporter.py          →  Groq Llama 3.1 AI narrative report
+
+[Orchestration & Delivery]
+    └── orchestrator.py          →  FastAPI REST API → Streamlit dashboard
+```
 
 ## Risk scoring model
 
@@ -107,7 +111,7 @@ streamlit run app.py          # Dashboard on:8501
 
 ## Try it
 
-Enter `08804411` (Revolut Ltd) or `10562211` (Monzo Bank Ltd) — 
+Enter `08804411` (Revolut Ltd) or `10562211` (Monzo Bank Ltd),
 two of the UK's most recognisable fintechs, to see a full 
 institutional-grade risk assessment generated in real time.
 
