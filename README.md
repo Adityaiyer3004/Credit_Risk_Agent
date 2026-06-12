@@ -108,12 +108,12 @@ streamlit run app.py          # Dashboard on:8501
 ## Try it
 
 Enter `08804411` (Revolut Ltd) or `10562211` (Monzo Bank Ltd) — 
-two of the UK's most recognisable fintechs — to see a full 
+two of the UK's most recognisable fintechs, to see a full 
 institutional-grade risk assessment generated in real time.
 
 ## What this could become
 
-The same architecture — live data ingestion, structured scoring, 
-LLM report generation — applies directly to investment due diligence. 
+The same architecture: live data ingestion, structured scoring, 
+LLM report generation: applies directly to investment due diligence. 
 Swap Companies House data for pitch deck content and founder LinkedIn 
 profiles, and you have an autonomous deal qualification agent.
