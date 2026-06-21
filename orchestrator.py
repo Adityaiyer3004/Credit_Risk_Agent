@@ -6,6 +6,7 @@ from news_searcher import search_company_news
 from gazette_winding_up import search_winding_up_petitions
 from accounts_analyzer import fetch_financial_ratios
 from opencorporates_client import fetch_opencorporates
+from mlflow_tracker import log_analysis_run
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -43,7 +44,7 @@ def generate_full_company_risk_report(profile):
         "prompt_version":  _prompt_version(),
     }
 
-    return {
+    result = {
         "profile":         profile,
         "risk":            risk,
         "baseline_report": baseline_report,
@@ -51,6 +52,17 @@ def generate_full_company_risk_report(profile):
         "guardrail":       guardrail,
         "llm_usage":       llm_usage,
     }
+
+    log_analysis_run(
+        company_name=company_name,
+        company_number=company_number,
+        risk=risk,
+        guardrail=guardrail,
+        llm_usage=llm_usage,
+        cached=False,
+    )
+
+    return result
 
 
 def _prompt_version() -> str:
