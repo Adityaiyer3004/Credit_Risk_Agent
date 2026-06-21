@@ -524,6 +524,25 @@ hr{border:none;border-top:1px solid rgba(0,212,255,.05);margin:1.5rem 0}
 .footer{text-align:center;color:#0d1f38;font-size:.68rem;padding:1rem 0;font-family:'JetBrains Mono',monospace;letter-spacing:.08em}
 .hidden{display:none!important}
 
+/* ── Feedback ─────────────────────────────────── */
+.fb-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.fb-q{font-size:.82rem;color:#4a5a72;font-family:'JetBrains Mono',monospace;letter-spacing:.04em}
+.fb-btn{
+  display:inline-flex;align-items:center;gap:.4rem;
+  background:rgba(10,20,45,.7);border:1px solid rgba(0,212,255,.1);
+  color:var(--muted);padding:.38rem 1.1rem;border-radius:6px;
+  font-size:.82rem;font-family:'Inter',sans-serif;font-weight:600;
+  cursor:pointer;transition:border-color .2s,background .2s,color .2s,transform .15s;
+  letter-spacing:.02em;
+}
+.fb-btn:hover{transform:translateY(-2px)}
+.fb-btn.up:hover{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08);color:#86efac}
+.fb-btn.dn:hover{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.08);color:#fca5a5}
+.fb-btn.selected-up{border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.12);color:#86efac}
+.fb-btn.selected-dn{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.12);color:#fca5a5}
+.fb-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.fb-thanks{font-size:.78rem;color:#4a5a72;font-family:'JetBrains Mono',monospace;letter-spacing:.04em;margin-top:.6rem}
+
 /* ── Disclaimer modal ────────────────────────── */
 #disc-overlay{
   position:fixed;inset:0;z-index:9999;
@@ -765,6 +784,12 @@ hr{border:none;border-top:1px solid rgba(0,212,255,.05);margin:1.5rem 0}
     <div class="sweep"></div>
     <div class="card-lbl">// guardrail_evaluation · llama_3.1_8b · llm_as_judge</div>
     <div id="guard-inner"></div>
+  </div>
+
+  <div class="card reveal hidden" id="cfeedback">
+    <div class="sweep"></div>
+    <div class="card-lbl">// rate_this_analysis</div>
+    <div id="feedback-inner"></div>
   </div>
 
 </div><!-- /results -->
@@ -1231,6 +1256,21 @@ function render(data){
     },430);
   }
 
+  // Feedback
+  const reqId=data.request_id||'';
+  if(reqId){
+    setTimeout(()=>{
+      document.getElementById('feedback-inner').innerHTML=`
+        <div class="fb-row">
+          <span class="fb-q">Was this analysis useful?</span>
+          <button class="fb-btn up" id="fb-up" onclick="submitFeedback('${reqId}',1)">👍 Helpful</button>
+          <button class="fb-btn dn" id="fb-dn" onclick="submitFeedback('${reqId}',-1)">👎 Not helpful</button>
+        </div>
+        <div class="fb-thanks hidden" id="fb-thanks"></div>`;
+      show('cfeedback',0);
+    },560);
+  }
+
   // Guardrail evaluation
   const grd=data.guardrail;
   if(grd){
@@ -1317,6 +1357,29 @@ async function analyse(forceRefresh=false){
 
 document.getElementById('btn').addEventListener('click',analyse);
 document.getElementById('inp').addEventListener('keydown',e=>e.key==='Enter'&&analyse());
+
+async function submitFeedback(requestId, rating){
+  const upBtn=document.getElementById('fb-up');
+  const dnBtn=document.getElementById('fb-dn');
+  const thanks=document.getElementById('fb-thanks');
+  if(!upBtn||!dnBtn)return;
+  upBtn.disabled=true; dnBtn.disabled=true;
+  upBtn.classList.remove('selected-up','selected-dn');
+  dnBtn.classList.remove('selected-up','selected-dn');
+  if(rating===1) upBtn.classList.add('selected-up');
+  else           dnBtn.classList.add('selected-dn');
+  try{
+    const headers={'Content-Type':'application/json'};
+    if(_apiKey)headers['X-API-Key']=_apiKey;
+    await fetch('/api/feedback',{method:'POST',headers,body:JSON.stringify({request_id:requestId,rating})});
+  }catch(_){}
+  if(thanks){
+    thanks.textContent=rating===1
+      ?'✓ Thanks — glad it was useful.'
+      :'✓ Thanks — your feedback helps improve accuracy.';
+    thanks.classList.remove('hidden');
+  }
+}
 </script>
 </body>
 </html>

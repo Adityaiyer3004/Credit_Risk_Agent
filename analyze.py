@@ -1,9 +1,14 @@
 import os
 import re
 import time
+import json
+import threading
 import logging
+from datetime import datetime, timezone
+from pathlib import Path
 from fastapi import APIRouter, Query, Request, HTTPException, Depends
 from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from comp_house_ingestor import fetch_company_data
@@ -53,6 +58,14 @@ def _require_api_key(key: str = Depends(_api_key_header)):
 
 limiter = Limiter(key_func=get_remote_address)
 router  = APIRouter(prefix="/api", tags=["Analyze"])
+
+_FB_PATH = Path(os.getenv("FEEDBACK_LOG_PATH", "feedback.log"))
+_fb_lock = threading.Lock()
+
+class FeedbackPayload(BaseModel):
+    request_id: str
+    rating: int        # 1 = thumbs up, -1 = thumbs down
+    comment: str = ""
 
 
 # ── Main analysis endpoint ────────────────────────────────────────────────────
@@ -174,3 +187,55 @@ def get_audit_recent(
 def get_audit_stats(_auth: None = Depends(_require_api_key)):
     """Aggregate statistics over the full audit log."""
     return summary_stats()
+
+
+# ── Feedback endpoints ────────────────────────────────────────────────────────
+@router.post("/feedback")
+def submit_feedback(payload: FeedbackPayload, request: Request):
+    """Record a thumbs up/down rating for an analysis."""
+    if payload.rating not in (1, -1):
+        raise HTTPException(status_code=422, detail="rating must be 1 or -1")
+    entry = {
+        "ts":         datetime.now(timezone.utc).isoformat(),
+        "request_id": payload.request_id,
+        "rating":     payload.rating,
+        "comment":    payload.comment.strip()[:500],
+        "ip":         request.client.host,
+    }
+    line = json.dumps(entry) + "\n"
+    with _fb_lock:
+        with _FB_PATH.open("a", encoding="utf-8") as f:
+            f.write(line)
+    logger.info("FEEDBACK | request_id=%s rating=%s", payload.request_id, payload.rating)
+    return {"ok": True}
+
+
+@router.get("/feedback/stats")
+def get_feedback_stats(_auth: None = Depends(_require_api_key)):
+    """Aggregate feedback stats."""
+    if not _FB_PATH.exists():
+        return {"total": 0, "thumbs_up": 0, "thumbs_down": 0, "satisfaction_pct": None}
+    up = down = 0
+    try:
+        with _FB_PATH.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                    if e.get("rating") == 1:
+                        up += 1
+                    elif e.get("rating") == -1:
+                        down += 1
+                except json.JSONDecodeError:
+                    pass
+    except OSError:
+        pass
+    total = up + down
+    return {
+        "total":            total,
+        "thumbs_up":        up,
+        "thumbs_down":      down,
+        "satisfaction_pct": round(up / total * 100, 1) if total else None,
+    }
