@@ -2,6 +2,8 @@
 
 Real-time UK company credit assessment — Companies House + GLEIF + Gazette + AI, deployed on Google Cloud Run.
 
+**[Live Demo →](https://credit-risk-agent-455794845007.europe-west2.run.app)**
+
 ---
 
 ## What it does
