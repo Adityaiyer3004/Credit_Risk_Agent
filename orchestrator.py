@@ -28,14 +28,35 @@ def generate_full_company_risk_report(profile):
     risk            = compute_risk_score(profile)
     baseline_report = build_credit_report(profile, risk)
 
-    # Phase 2: generate report, then guardrail-eval it (sequential — eval needs report text)
-    llm_report = generate_risk_report(company_name, profile, risk)
-    guardrail  = evaluate_report(company_name, profile, risk, llm_report)
+    # Phase 2: generate report then guardrail-eval it (sequential — eval needs report text)
+    llm_report, report_tokens = generate_risk_report(company_name, profile, risk)
+    guardrail = evaluate_report(company_name, profile, risk, llm_report)
+    guardrail_tokens = guardrail.pop("tokens", {})
+
+    llm_usage = {
+        "report":          report_tokens,
+        "guardrail":       guardrail_tokens,
+        "total_tokens":    report_tokens.get("total", 0) + guardrail_tokens.get("total", 0),
+        "total_cost_usd":  round(
+            report_tokens.get("cost_usd", 0) + guardrail_tokens.get("cost_usd", 0), 6
+        ),
+        "prompt_version":  _prompt_version(),
+    }
 
     return {
-        "profile":          profile,
-        "risk":             risk,
-        "baseline_report":  baseline_report,
-        "llm_report":       llm_report,
-        "guardrail":        guardrail,
+        "profile":         profile,
+        "risk":            risk,
+        "baseline_report": baseline_report,
+        "llm_report":      llm_report,
+        "guardrail":       guardrail,
+        "llm_usage":       llm_usage,
     }
+
+
+def _prompt_version() -> str:
+    try:
+        from pathlib import Path
+        import yaml
+        return yaml.safe_load((Path(__file__).parent / "prompts.yaml").read_text())["version"]
+    except Exception:
+        return "unknown"

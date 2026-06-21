@@ -115,6 +115,7 @@ def analyze_company(
             "baseline_report":       result["baseline_report"],
             "llm_report":            result["llm_report"],
             "guardrail":             result["guardrail"],
+            "llm_usage":             result.get("llm_usage", {}),
             "cached":                False,
             "cache_age_seconds":     0,
             "analysis_time_seconds": elapsed,
@@ -129,6 +130,7 @@ def analyze_company(
             guardrail=result["guardrail"],
             cached=False,
             elapsed_s=elapsed,
+            llm_usage=result.get("llm_usage"),
         )
         payload["request_id"] = request_id
         return payload

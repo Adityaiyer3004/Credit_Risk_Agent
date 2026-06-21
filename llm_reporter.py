@@ -1,5 +1,7 @@
 import os
-from datetime import datetime
+from pathlib import Path
+from datetime import datetime, timezone
+import yaml
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -7,31 +9,39 @@ from langchain_core.messages import SystemMessage, HumanMessage
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-SYSTEM = """You are a senior credit risk analyst at a Tier 1 investment bank with 20 years of experience underwriting UK corporate credit. You advise credit committees making real lending decisions.
-
-Critical analytical distinctions — get these wrong and the report is rejected:
-- SOLVENCY RISK (can they repay?) and GOVERNANCE/COMPLIANCE RISK (are they well-managed?) are different. AML fines, regulatory censures, and filing delays are governance signals, not solvency signals. Do not write "high likelihood of default" because of an AML fine.
-- Director history: experienced board members at large companies routinely accumulate dissolved appointments across a long career. Only flag this if the dissolution rate is unusually high relative to their total appointments, or if dissolvals are recent.
-- Registered charges fully satisfied are not a risk signal — they show the company successfully serviced past secured debt.
-- Scale matters: a €3.5m fine against a company with billions in revenue is a governance concern, not an existential threat. A €3.5m fine against a £5m-revenue SME is existential.
-
-Output rules — break any of these and the report is rejected:
-- Plain prose only. Zero asterisks, zero markdown, zero bullet symbols, zero dashes used as decorators.
-- Number each section heading exactly as shown. No sub-headings.
-- Every sentence must add analytical value. No padding, no restating the question.
-- Interpret what data means for credit risk. Do not echo raw values back.
-- Tone: precise, direct, institutional. No hedging phrases like "it is worth noting"."""
+_cfg = yaml.safe_load((Path(__file__).parent / "prompts.yaml").read_text())["report"]
+_SYSTEM = _cfg["system"].strip()
 
 
-def generate_risk_report(company_name: str, profile: dict, risk: dict) -> str:
+def _extract_tokens(resp) -> dict:
+    meta = getattr(resp, "usage_metadata", None) or {}
+    fallback = getattr(resp, "response_metadata", {}).get("token_usage", {})
+    inp = meta.get("input_tokens") or fallback.get("prompt_tokens", 0)
+    out = meta.get("output_tokens") or fallback.get("completion_tokens", 0)
+    tot = meta.get("total_tokens") or fallback.get("total_tokens", inp + out)
+    return {
+        "model": _cfg["model"],
+        "input": inp,
+        "output": out,
+        "total": tot,
+        "cost_usd": round(
+            inp * _cfg["cost_per_1m_input_usd"] / 1_000_000
+            + out * _cfg["cost_per_1m_output_usd"] / 1_000_000,
+            6,
+        ),
+    }
+
+
+def generate_risk_report(company_name: str, profile: dict, risk: dict) -> tuple[str, dict]:
+    """Return (report_text, token_usage_dict)."""
     if not GROQ_API_KEY:
-        return "GROQ_API_KEY not set in .env"
+        return "GROQ_API_KEY not set in .env", {}
 
     llm = ChatGroq(
         groq_api_key=GROQ_API_KEY,
-        model_name="llama-3.3-70b-versatile",
-        temperature=0.15,
-        max_tokens=1200,
+        model_name=_cfg["model"],
+        temperature=_cfg["temperature"],
+        max_tokens=_cfg["max_tokens"],
     )
 
     # Enrich context
@@ -158,7 +168,6 @@ def generate_risk_report(company_name: str, profile: dict, risk: dict) -> str:
         if fin_ratios.get("gearing_pct"):
             lines.append(f"  Gearing: {fin_ratios['gearing_pct']}%")
 
-        # Altman Z'-Score
         altman = financials.get("altman_z")
         if altman:
             lines.append(
@@ -166,7 +175,6 @@ def generate_risk_report(company_name: str, profile: dict, risk: dict) -> str:
                 f" — Safe >2.9 | Grey 1.23-2.9 | Distress <1.23"
             )
 
-        # Year-over-year trend
         trend = financials.get("trend", {})
         for metric, label in [("turnover", "Revenue"), ("profit_loss", "Profit/Loss"), ("net_assets", "Net Assets")]:
             t = trend.get(metric)
@@ -253,8 +261,8 @@ Section guidance:
 5. CREDIT OPINION — Two sentences maximum. State plainly whether you would recommend extending credit and under what conditions or limits. Be direct."""
 
     try:
-        response = llm.invoke([SystemMessage(content=SYSTEM), HumanMessage(content=user)])
-        from datetime import timezone
+        response = llm.invoke([SystemMessage(content=_SYSTEM), HumanMessage(content=user)])
+        tokens = _extract_tokens(response)
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         disclaimer = (
             "\n\n---\n"
@@ -263,11 +271,11 @@ Section guidance:
             "a regulated credit assessment, or a recommendation to extend or withhold credit. "
             f"Generated {ts}."
         )
-        return response.content.strip() + disclaimer
+        return response.content.strip() + disclaimer, tokens
     except Exception as e:
         err = str(e)
         if "403" in err or "Access denied" in err:
-            return "Groq API blocked — disable VPN and retry."
+            return "Groq API blocked — disable VPN and retry.", {}
         if "timed out" in err.lower() or "connection" in err.lower():
-            return "Network issue — unable to reach Groq API."
-        return f"Report generation failed: {err}"
+            return "Network issue — unable to reach Groq API.", {}
+        return f"Report generation failed: {err}", {}

@@ -47,25 +47,29 @@ def log_analysis(
     cached: bool,
     cache_age_s: int = 0,
     elapsed_s: float | None = None,
+    llm_usage: dict | None = None,
 ) -> str:
     """Write one audit entry. Returns the request_id for cross-referencing."""
     request_id = str(uuid.uuid4())
     entry = {
-        "ts":             datetime.now(timezone.utc).isoformat(),
-        "request_id":     request_id,
-        "ip":             ip,
-        "company_number": company_number,
-        "company_name":   profile.get("company_name", ""),
-        "company_status": profile.get("company_status", ""),
-        "sic_codes":      profile.get("sic_codes", []),
-        "score":          risk.get("credit_score"),
-        "risk_level":     risk.get("risk_level", ""),
-        "score_drivers":  risk.get("reasons", []),
-        "guardrail":      guardrail.get("overall_grade", "?"),
+        "ts":              datetime.now(timezone.utc).isoformat(),
+        "request_id":      request_id,
+        "ip":              ip,
+        "company_number":  company_number,
+        "company_name":    profile.get("company_name", ""),
+        "company_status":  profile.get("company_status", ""),
+        "sic_codes":       profile.get("sic_codes", []),
+        "score":           risk.get("credit_score"),
+        "risk_level":      risk.get("risk_level", ""),
+        "score_drivers":   risk.get("reasons", []),
+        "guardrail":       guardrail.get("overall_grade", "?"),
         "guardrail_flags": guardrail.get("flags", []),
-        "cached":         cached,
-        "cache_age_s":    cache_age_s if cached else 0,
-        "elapsed_s":      elapsed_s if not cached else None,
+        "cached":          cached,
+        "cache_age_s":     cache_age_s if cached else 0,
+        "elapsed_s":       elapsed_s if not cached else None,
+        "llm_tokens":      llm_usage.get("total_tokens", 0) if llm_usage else 0,
+        "llm_cost_usd":    llm_usage.get("total_cost_usd", 0.0) if llm_usage else 0.0,
+        "prompt_version":  llm_usage.get("prompt_version", "") if llm_usage else "",
     }
     if _STDOUT_MODE:
         # Cloud Logging structured log format — severity + jsonPayload
