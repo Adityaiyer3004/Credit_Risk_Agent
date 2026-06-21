@@ -1,0 +1,31 @@
+# Secrets — never in the image
+.env
+.env.*
+
+# Dev/test artefacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Local runtime files
+audit.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit (not used in prod)
+app.py

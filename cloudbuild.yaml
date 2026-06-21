@@ -1,0 +1,109 @@
+##############################################################################
+# Cloud Build CI/CD pipeline
+#
+# Triggered on push to main branch.
+# Steps: test → build → push → deploy
+#
+# Required substitutions (set in Cloud Build trigger UI or gcloud CLI):
+#   _REGION          e.g. europe-west2
+#   _SERVICE         e.g. credit-risk-agent
+#   _AR_REPO         e.g. credit-risk          (Artifact Registry repo name)
+#   _VPC_CONNECTOR   e.g. projects/PROJECT/locations/REGION/connectors/NAME
+#                    (needed to reach Memorystore Redis over private IP)
+#
+# Required Secret Manager secrets (create these before first deploy):
+#   COMPANIES_HOUSE_API_KEY
+#   GROQ_API_KEY
+#   TAVILY_API_KEY
+#   CREDIT_RISK_API_KEY
+#   REDIS_URL            (redis://MEMORYSTORE_IP:6379/0)
+#
+# One-time setup:
+#   gcloud artifacts repositories create $_AR_REPO \
+#     --repository-format=docker --location=$_REGION
+##############################################################################
+
+substitutions:
+  _REGION: europe-west2
+  _SERVICE: credit-risk-agent
+  _AR_REPO: credit-risk
+  _VPC_CONNECTOR: ""          # fill in after creating the VPC connector
+
+steps:
+
+  # ── 1. Run tests ────────────────────────────────────────────────────────────
+  - name: python:3.12-slim
+    id: test
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        pip install -r requirements.txt pytest pytest-env httpx --quiet
+        TESTING=1 python -m pytest tests/ --tb=short -q
+
+  # ── 2. Build image ──────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    waitFor: [test]
+    args:
+      - build
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$COMMIT_SHA
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest
+      - --cache-from
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest
+      - .
+
+  # ── 3. Push image ───────────────────────────────────────────────────────────
+  - name: gcr.io/cloud-builders/docker
+    id: push
+    waitFor: [build]
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}
+
+  # ── 4. Deploy to Cloud Run ──────────────────────────────────────────────────
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    id: deploy
+    waitFor: [push]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      # Compute
+      - --cpu=2
+      - --memory=1Gi
+      - --concurrency=80
+      # Scaling — min-instances=1 avoids cold starts on a financial tool
+      - --min-instances=1
+      - --max-instances=10
+      # Timeout — analysis can take ~20s; set generous limit
+      - --timeout=120
+      # Secrets mounted as env vars from Secret Manager
+      # (VPC connector added later when Memorystore Redis is provisioned)
+      - >-
+        --set-secrets=
+        COMPANIES_HOUSE_API_KEY=COMPANIES_HOUSE_API_KEY:latest,
+        GROQ_API_KEY=GROQ_API_KEY:latest,
+        TAVILY_API_KEY=TAVILY_API_KEY:latest,
+        CREDIT_RISK_API_KEY=CREDIT_RISK_API_KEY:latest,
+        REDIS_URL=REDIS_URL:latest
+      # Audit log → Cloud Logging (structured stdout, captured automatically)
+      - --set-env-vars=AUDIT_LOG_PATH=/dev/stdout
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$COMMIT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8     # faster builds; costs ~$0.01 per run
+
+timeout: 1200s
