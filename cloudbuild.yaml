@@ -27,7 +27,7 @@ substitutions:
   _REGION: europe-west2
   _SERVICE: credit-risk-agent
   _AR_REPO: credit-risk
-  _VPC_CONNECTOR: ""          # fill in after creating the VPC connector
+  _VPC_CONNECTOR: projects/credit-risk-agent-2026/locations/europe-west2/connectors/credit-risk-connector
 
 steps:
 
@@ -95,6 +95,8 @@ steps:
         TAVILY_API_KEY=TAVILY_API_KEY:latest,
         CREDIT_RISK_API_KEY=CREDIT_RISK_API_KEY:latest,
         REDIS_URL=REDIS_URL:latest
+      # VPC connector — required to reach Memorystore Redis private IP
+      - --vpc-connector=${_VPC_CONNECTOR}
       # Audit log → Cloud Logging (structured stdout, captured automatically)
       - --set-env-vars=AUDIT_LOG_PATH=/dev/stdout
 
