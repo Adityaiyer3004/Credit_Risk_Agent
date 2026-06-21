@@ -39,7 +39,7 @@ steps:
       - -c
       - |
         pip install -r requirements.txt pytest pytest-env httpx --quiet
-        TESTING=1 python -m pytest tests/ --tb=short -q
+        TESTING=1 CREDIT_RISK_API_KEY=test-key python -m pytest tests/ --tb=short -q
 
   # ── 2. Build image ──────────────────────────────────────────────────────────
   - name: gcr.io/cloud-builders/docker
