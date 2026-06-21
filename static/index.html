@@ -967,8 +967,10 @@ function typewriter(el,txt,spd=26){
 
 function show(id,delay=0){
   const el=document.getElementById(id);if(!el)return;
-  el.classList.remove('hidden');
-  setTimeout(()=>el.classList.add('show'),delay);
+  setTimeout(()=>{
+    el.classList.remove('hidden');
+    requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('show')));
+  },delay);
 }
 
 // ── Report renderer ──────────────────────────────────────────────────────────
